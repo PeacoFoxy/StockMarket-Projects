@@ -1,0 +1,167 @@
+"""Exploratory plots for the GARCH project.
+
+Every function takes the dict-of-Series structure produced by
+`data_loader.compute_log_returns` and accepts an optional `save_path`
+so that figures can be written to outputs/ from the notebook.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import stats
+
+# Crisis windows used to annotate the time-series plots. Shading these
+# turns "volatility spikes somewhere around 2008" into a claim the reader
+# can verify against specific events.
+CRISES = {
+    "GFC": ("2008-09-01", "2009-06-30"),
+    "EU debt": ("2011-07-01", "2012-07-31"),
+    "COVID": ("2020-02-20", "2020-04-30"),
+    "Inflation": ("2022-01-01", "2022-10-31"),
+}
+
+
+def _shade_crises(ax):
+    """Shade crisis windows on a time-axis plot."""
+    for name, (start, end) in CRISES.items():
+        ax.axvspan(np.datetime64(start), np.datetime64(end),
+                   color="grey", alpha=0.15, zorder=0)
+
+
+def plot_prices(prices, save_path=None):
+    """Normalised price levels -- a first check on data integrity.
+
+    Prices are rebased to 100 at the sample start so that four indices on
+    very different scales can share one axis. Discontinuities, flat
+    stretches or implausible jumps would show up here before they
+    contaminate anything downstream.
+    """
+    fig, ax = plt.subplots(figsize=(13, 5))
+    for label, s in prices.items():
+        ax.plot(s.index, 100 * s / s.iloc[0], linewidth=1.1, label=label)
+    _shade_crises(ax)
+    ax.set_title("Index levels, rebased to 100 at 2007-04-02")
+    ax.set_ylabel("Index (base = 100)")
+    ax.legend(loc="upper left")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+def plot_returns(returns, save_path=None):
+    """Return series -- the visual signature of volatility clustering.
+
+    A constant-variance series would look like a band of uniform
+    thickness. Equity returns instead alternate between calm stretches
+    and violent ones, which is precisely what GARCH is built to model.
+    """
+    n = len(returns)
+    fig, axes = plt.subplots(n, 1, figsize=(13, 2.6 * n), sharex=True)
+
+    for ax, (label, r) in zip(axes, returns.items()):
+        ax.plot(r.index, r.values, linewidth=0.4, color="steelblue")
+        _shade_crises(ax)
+        ax.set_ylabel(f"{label} (%)")
+        ax.axhline(0, color="black", linewidth=0.5)
+
+    axes[0].set_title("Daily log returns (%) -- shaded regions mark crisis periods")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+def plot_rolling_volatility(returns, window=21, save_path=None):
+    """Annualised rolling volatility.
+
+    Converts the clustering visible in the return plot into a level that
+    can be read off directly. A 21-day window is one trading month --
+    short enough to react to regime shifts, long enough to be stable.
+    """
+    fig, ax = plt.subplots(figsize=(13, 5))
+    for label, r in returns.items():
+        # sqrt-of-time rule; r is already in percent, so no further scaling
+        vol = r.rolling(window).std() * np.sqrt(252)
+        ax.plot(vol.index, vol.values, linewidth=0.9, label=label)
+    _shade_crises(ax)
+    ax.set_title(f"{window}-day rolling volatility, annualised (%)")
+    ax.set_ylabel("Volatility (%)")
+    ax.legend(loc="upper left")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+def plot_return_distributions(returns, save_path=None):
+    """Histogram against a fitted normal, plus a normal QQ plot.
+
+    The histogram shows the peak and shoulders; the QQ plot is the
+    sharper diagnostic for the tails. Under normality the points would
+    lie on the 45-degree line. Departures at both ends -- the
+    characteristic S-shape -- indicate excess kurtosis.
+    """
+    n = len(returns)
+    fig, axes = plt.subplots(2, n, figsize=(4 * n, 7))
+
+    for j, (label, r) in enumerate(returns.items()):
+        # Top row: empirical density vs fitted normal
+        ax = axes[0, j]
+        ax.hist(r, bins=150, density=True, alpha=0.6,
+                color="steelblue", edgecolor="none")
+        x = np.linspace(r.min(), r.max(), 500)
+        ax.plot(x, stats.norm.pdf(x, r.mean(), r.std()),
+                color="red", linewidth=1.2, label="Normal")
+        ax.set_xlim(-6, 6)          # zoom on the body; tails are the QQ plot's job
+        ax.set_title(label)
+        if j == 0:
+            ax.set_ylabel("Density")
+        ax.legend(fontsize=8)
+
+        # Bottom row: normal QQ plot
+        ax = axes[1, j]
+        stats.probplot(r, dist="norm", plot=ax)
+        ax.set_title("")
+        ax.get_lines()[0].set_markersize(2)
+        ax.get_lines()[0].set_color("steelblue")
+        ax.get_lines()[1].set_color("red")
+        if j == 0:
+            ax.set_ylabel("Sample quantiles")
+
+    fig.suptitle("Return distributions vs the normal benchmark", y=1.00)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+def plot_rolling_volatility_panels(returns, window=21, save_path=None):
+    """Rolling volatility, one panel per index on a shared scale.
+
+    The overlaid version is useful for ranking levels at a glance but
+    becomes unreadable during calm periods when the four series overlap.
+    Separate panels sacrifice direct comparison for legibility; a shared
+    y-axis keeps the magnitudes comparable across panels.
+    """
+    n = len(returns)
+    fig, axes = plt.subplots(n, 1, figsize=(13, 2.6 * n), sharex=True, sharey=True)
+
+    for ax, (label, r) in zip(axes, returns.items()):
+        vol = r.rolling(window).std() * np.sqrt(252)
+        ax.plot(vol.index, vol.values, linewidth=0.8, color="steelblue")
+
+        # Unconditional annualised volatility as a reference line: it makes
+        # visible how rarely realised volatility actually sits at its average.
+        uncond = r.std() * np.sqrt(252)
+        ax.axhline(uncond, color="red", linestyle="--", linewidth=0.9,
+                   label=f"Unconditional: {uncond:.1f}%")
+
+        _shade_crises(ax)
+        ax.set_ylabel(f"{label} (%)")
+        ax.legend(loc="upper right", fontsize=8)
+
+    axes[0].set_title(f"{window}-day rolling volatility, annualised (%)")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
