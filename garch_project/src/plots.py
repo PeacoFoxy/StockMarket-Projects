@@ -165,3 +165,41 @@ def plot_rolling_volatility_panels(returns, window=21, save_path=None):
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.show()
+
+
+def plot_conditional_volatility(results, returns=None, window=21, save_path=None):
+    """Fitted conditional volatility, optionally against a rolling estimate.
+
+    The comparison is the point. Both series describe the same underlying
+    quantity, but the rolling standard deviation weights the last `window`
+    days equally and ignores everything before them, while GARCH weights
+    all history with geometrically declining weights. Two consequences are
+    visible: GARCH responds on the day a shock arrives rather than easing
+    into it, and it decays smoothly instead of dropping discontinuously
+    when a large observation leaves the window.
+    """
+    n = len(results)
+    fig, axes = plt.subplots(n, 1, figsize=(13, 2.8 * n), sharex=True)
+
+    for ax, (label, res) in zip(axes, results.items()):
+        # res.conditional_volatility is the fitted sigma_t series, in the
+        # same percentage units as the input returns.
+        cond_vol = res.conditional_volatility * np.sqrt(252)
+
+        if returns is not None:
+            roll = returns[label].rolling(window).std() * np.sqrt(252)
+            ax.plot(roll.index, roll.values, linewidth=0.7,
+                    color="grey", alpha=0.7, label=f"{window}-day rolling")
+
+        ax.plot(cond_vol.index, cond_vol.values, linewidth=0.8,
+                color="steelblue", label="GARCH(1,1)")
+
+        _shade_crises(ax)
+        ax.set_ylabel(f"{label} (%)")
+        ax.legend(loc="upper right", fontsize=8)
+
+    axes[0].set_title("Conditional volatility, annualised (%)")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
