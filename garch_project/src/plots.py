@@ -247,3 +247,38 @@ def plot_residual_qq(results_normal, results_t, save_path=None):
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.show()
+
+
+def plot_news_impact(results, save_path=None):
+    """News impact curve: conditional variance as a function of yesterday's shock.
+
+    Holds sigma^2_{t-1} at its unconditional level and traces sigma^2_t
+    across a range of epsilon_{t-1}. Under symmetric GARCH the curve is a
+    parabola centred at zero; GJR bends it, producing a steeper left arm.
+
+    Engle and Ng (1993) introduced this as the standard way to compare
+    asymmetric specifications visually.
+    """
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    eps = np.linspace(-5, 5, 400)
+
+    for label, res in results.items():
+        p = res.params
+        a, g, b = p["alpha[1]"], p.get("gamma[1]", 0.0), p["beta[1]"]
+        omega = p["omega"]
+
+        persist = a + g / 2 + b
+        sigma2_bar = omega / (1 - persist)
+
+        sigma2 = omega + a * eps**2 + g * eps**2 * (eps < 0) + b * sigma2_bar
+        ax.plot(eps, sigma2, linewidth=1.6, label=label)
+
+    ax.axvline(0, color="black", linewidth=0.6)
+    ax.set_xlabel(r"Shock yesterday, $\epsilon_{t-1}$ (%)")
+    ax.set_ylabel(r"Conditional variance today, $\sigma_t^2$")
+    ax.set_title("News impact curves, GJR-skewt")
+    ax.legend()
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
