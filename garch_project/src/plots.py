@@ -203,3 +203,47 @@ def plot_conditional_volatility(results, returns=None, window=21, save_path=None
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.show()
+
+
+def plot_residual_qq(results_normal, results_t, save_path=None):
+    """QQ plots of standardised residuals against their assumed distributions.
+
+    Each model is checked against the distribution it actually assumes:
+    normal residuals against a normal, t residuals against a t with the
+    estimated degrees of freedom. Points on the line mean the assumption
+    holds.
+    """
+    n = len(results_normal)
+    fig, axes = plt.subplots(2, n, figsize=(4 * n, 7))
+
+    for j, label in enumerate(results_normal.keys()):
+        # Top row: normal model vs normal quantiles
+        z_n = results_normal[label].std_resid.dropna()
+        ax = axes[0, j]
+        stats.probplot(z_n, dist="norm", plot=ax)
+        ax.set_title(f"{label} — Normal")
+        ax.get_lines()[0].set_markersize(2)
+        ax.get_lines()[0].set_color("steelblue")
+        ax.get_lines()[1].set_color("red")
+        ax.set_xlabel("")
+        if j > 0:
+            ax.set_ylabel("")
+
+        # Bottom row: t model vs t quantiles with the ESTIMATED nu.
+        # Using a normal reference here would be the wrong benchmark --
+        # the t model never claimed its residuals were Gaussian.
+        z_t = results_t[label].std_resid.dropna()
+        nu = results_t[label].params["nu"]
+        ax = axes[1, j]
+        stats.probplot(z_t, dist=stats.t, sparams=(nu,), plot=ax)
+        ax.set_title(f"{label} — t({nu:.1f})")
+        ax.get_lines()[0].set_markersize(2)
+        ax.get_lines()[0].set_color("steelblue")
+        ax.get_lines()[1].set_color("red")
+        if j > 0:
+            ax.set_ylabel("")
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
