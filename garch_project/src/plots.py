@@ -282,3 +282,39 @@ def plot_news_impact(results, save_path=None):
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.show()
+
+
+def plot_var_backtest(backtests, index_label, save_path=None):
+    """VaR forecasts against realised returns, one panel per specification.
+
+    Plots the negative VaR as a threshold line with realised returns
+    beneath it; violations are marked. Stacking specifications vertically
+    makes the failure mode of the normal model visible: its threshold sits
+    too close to the return series, so breaches are frequent.
+    """
+    n = len(backtests)
+    fig, axes = plt.subplots(n, 1, figsize=(13, 3.0 * n), sharex=True, sharey=True)
+
+    for ax, (spec, bt) in zip(axes, backtests.items()):
+        ax.plot(bt.index, bt["Return"], linewidth=0.5,
+                color="steelblue", alpha=0.75, label="Return")
+        ax.plot(bt.index, -bt["VaR"], linewidth=0.9,
+                color="black", label="-VaR (99%)")
+
+        v = bt[bt["Violation"]]
+        ax.scatter(v.index, v["Return"], s=14, color="red",
+                   zorder=5, label=f"Violations ({len(v)})")
+
+        _shade_crises(ax)
+        # Crisis shading spans the full sample; restrict the axis to the
+        # out-of-sample window so the 2008 and 2011 bands do not stretch
+        # the plot across a decade with no data.
+        ax.set_xlim(bt.index[0], bt.index[-1])
+        ax.set_ylabel(f"{spec}\n(%)", fontsize=9)
+        ax.legend(loc="lower left", fontsize=8, ncol=3)
+
+    axes[0].set_title(f"{index_label}: 99% VaR backtest, out-of-sample from 2016")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
